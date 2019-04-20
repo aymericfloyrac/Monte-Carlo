@@ -21,21 +21,54 @@ for (i in 2:n){
 }
 
 #simulation de la valeur qui nous intéresse
-value<-function(T=1,r=0.05,k=20,K=0.5,sigma=0.3,mu=0){
+value<-function(T=1,r=0.05,k=20,K=5,sigma=0.3,mu){
+  if (missing(mu)){
+    mu<-r
+    } #on suppose que, si non spécifié, le drift et le taux d'intérêt sont égaux
   t <- (1:k)/k
   W <- rnorm(n=k-1, mean=0,sd=1/k)
   W<- c(0,cumsum(W))
-  S <- exp((mu-sigma**2/2)*t)
+  S <- K*exp((mu-sigma**2/2)*t) #est-ce qu'on suppose que la valeur du BS au temps 0 vaut K? 
   S<-S*exp(sigma*W)
-  plot(S,type='l')
-  return(exp(-r*T)*max((mean(S)-K),0))
+  return(exp(-r*T)*max(mean(S)-K,0))
 }
-
+value()
 
 #plusieurs simulations
 v<-c()
-for (i in 1:100){
+for (i in 1:1000){
   v<-c(v,value())
 }
 
-plot(v,type='l')
+hist(v,type='l')
+sum(v>0)
+sd(v)
+
+#variables antithétiques 
+# concernant le MB, on sait que -W a même loi que W. 
+
+antithetic<-function(T=1,r=0.05,k=20,K=5,sigma=0.3,mu){
+  if (missing(mu)){
+    mu<-r
+  } #on suppose que, si non spécifié, le drift et le taux d'intérêt sont égaux
+  t <- (1:k)/k
+  W <- rnorm(n=k-1, mean=0,sd=1/k)
+  W1 <- c(0,cumsum(W))
+  W2 <- c(0,-cumsum(W))
+  S <- K*exp((mu-sigma**2/2)*t) #est-ce qu'on suppose que la valeur du BS au temps 0 vaut K? 
+  S1<-S*exp(sigma*W1)
+  S2<-S*exp(sigma*W2)
+  return(0.5*exp(-r*T)*(max(mean(S1)-K,0)+max(mean(S2)-K,0)))
+}
+
+antithetic()
+v<-c()
+for (i in 1:1000){
+  v<-c(v,antithetic())
+}
+sd(v) #on observe bien une réduction de variance environ d'un facteur 2
+
+#variables de contrôle
+# idée (à voir): prendre le Black Scholes comme variable de contrôle
+
+
