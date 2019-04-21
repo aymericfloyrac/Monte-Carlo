@@ -57,27 +57,35 @@ sd(v)
 ############# ANTITHETIQUE ###############
 # concernant le MB, on sait que -W a même loi que W. 
 
-antithetic<-function(T=1,r=0.05,k=20,K=5,sigma=0.3,mu){
+monteCarlo<-function(N=1000,T=1,r=0.05,k=20,K=5,sigma=0.3,mu,antithet=T){
   if (missing(mu)){
     mu<-r
   } #on suppose que, si non spécifié, le drift et le taux d'intérêt sont égaux
   t <- (1:k)/k
-  W <- rnorm(n=k-1, mean=0,sd=1/k)
-  W1 <- c(0,cumsum(W))
-  W2 <- c(0,-cumsum(W))
-  S <- K*exp((mu-sigma**2/2)*t) #est-ce qu'on suppose que la valeur du BS au temps 0 vaut K? 
-  S1<-S*exp(sigma*W1)
-  S2<-S*exp(sigma*W2)
-  return(0.5*exp(-r*T)*(max(mean(S1)-K,0)+max(mean(S2)-K,0)))
+  W <- rnorm(n=N*(k-1), mean=0,sd=1/k)
+  W <- matrix(W,nrow = N,ncol = k-1)
+  W<-t(apply(W,1,cumsum))
+  W1 <- c(rep(0,N),W)
+  W1<-matrix(W1,nrow = N,ncol = k)
+  S <- rep(K*exp((mu-sigma**2/2)*t),N) 
+  S <-matrix(S,nrow=N,ncol=k)
+  S1 <-S*exp(sigma*W1)
+  if (antithet){
+    W2 <- -W1
+    S2 <-S*exp(sigma*W2)
+    C <- 0.5*exp(-r*T)*(pmax(rowMeans(S1)-K,0)+pmax(rowMeans(S2)-K,0))
+  }
+  else{
+    C <- exp(-r*T)*pmax(rowMeans(S1)-K,0)
+  }
+  beta <- cov(W1[,k],C)/var(W1[,k])
+  C <- C-beta*W1[,k]
+  #return (list('mean'=mean(C),'sd'=sd(C)))
+  return (c(mean(C),sd(C)))
 }
 
-antithetic()
-v<-c()
-for (i in 1:1000){
-  v<-c(v,antithetic())
-}
-mean(v)
-sd(v) #on observe bien une réduction de variance environ d'un facteur 2
+monteCarlo(antithet=F)
+monteCarlo(antithet = T)
 
 ############# VARIABLE DE CONTROLE ###############
 # idée (à voir): prendre le Black Scholes comme variable de contrôle, ou bien juste le BM 
@@ -103,7 +111,8 @@ control<-function(N=1000,T=1,r=0.05,k=20,K=5,sigma=0.3,mu){
   C <- 0.5*exp(-r*T)*(pmax(rowMeans(S1)-K,0)+pmax(rowMeans(S2)-K,0))
   beta <- cov(W1[,k],C)/var(W1[,k])
   C <- C-beta*W1[,k]
-  return (list('mean'=mean(C),'sd'=sd(C)))
+  #return (list('mean'=mean(C),'sd'=sd(C)))
+  return (c(mean(C),sd(C)))
 }
 
 control()
@@ -113,10 +122,11 @@ control()
 ############# QUASI MC ###############
 #si on devait coder un générateur QMC nous mêmes on pourrait faire du Box Muller
 # avec des uniformes en treillis
+#mais on va utiliser la librairie déjà faite
 library(randtoolbox)
 # on va utiliser les fonctions halton, torus et sobol pour générer des gaussiennes
 
-qmc<-function(N=1000,T=1,r=0.05,k=20,K=5,sigma=0.3,mu,funcStr='halton'){
+qmc<-function(N=1000,T=1,r=0.05,k=20,K=5,sigma=0.3,mu,funcStr='halton',antithet=T){
   if (missing(mu)){
     mu<-r
   } #on suppose que, si non spécifié, le drift et le taux d'intérêt sont égaux
@@ -137,19 +147,38 @@ qmc<-function(N=1000,T=1,r=0.05,k=20,K=5,sigma=0.3,mu,funcStr='halton'){
   W<-t(apply(W,1,cumsum))
   W1 <- c(rep(0,N),W)
   W1<-matrix(W1,nrow = N,ncol = k)
-  W2 <- -W1
   S <- rep(K*exp((mu-sigma**2/2)*t),N) 
   S <-matrix(S,nrow=N,ncol=k)
   S1 <-S*exp(sigma*W1)
-  S2 <-S*exp(sigma*W2)
-  C <- 0.5*exp(-r*T)*(pmax(rowMeans(S1)-K,0)+pmax(rowMeans(S2)-K,0))
+  if (antithet){
+    W2 <- -W1
+    S2 <-S*exp(sigma*W2)
+    C <- 0.5*exp(-r*T)*(pmax(rowMeans(S1)-K,0)+pmax(rowMeans(S2)-K,0))
+  }
+  else{
+    C <- exp(-r*T)*pmax(rowMeans(S1)-K,0)
+  }
   beta <- cov(W1[,k],C)/var(W1[,k])
   C <- C-beta*W1[,k]
-  return (list('mean'=mean(C),'sd'=sd(C)))
+  #return (list('mean'=mean(C),'sd'=sd(C)))
+  return (c(mean(C),sd(C)))
 }
 qmc(funcStr = 'sobol')
 
 
+############# RECAPITULONS ###############
+results<-data.frame(matrix(nrow=5,ncol=2),row.names = c('mc','antithetic','ctrl','qmc','qmc antithetic'))
+colnames(results)<-c('moyenne','ecart-type')
+results[1,]<-monteCarlo(antithet=F)
+results[2,]<-monteCarlo(antithet = T)
+results[3,]<-control()
+results[4,]<-qmc(antithet = F)
+results[5,]<-qmc(antithet = T)
+
+results
+
+#on a donc pas la même moyenne selon les méthodes, ce qui est gênant, 
+# par contre les méthodes antithétiques donnent de meilleures variances
 
 ########################################
 ############# QUESTION 2 ###############
