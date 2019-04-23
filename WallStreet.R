@@ -1,3 +1,4 @@
+#coucou
 rm(list=ls())
 library(MASS)
 
