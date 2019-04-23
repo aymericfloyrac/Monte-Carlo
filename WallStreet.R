@@ -17,6 +17,7 @@ une idée générale: pour le rendu graphique, on peut plotter l'évolution de l
 
 
 ############# SIMULATION DU MB ###############
+#dans un premier temps on fait une construction random walk 
 k<-20 #longueur du MB
 n<-1000 #nombre de simulations
 W <- rnorm(n=n*k,mean = 0,sd=1/k)
@@ -30,6 +31,10 @@ for (i in 2:n){
 }
 
 plot(colMeans(W))
+
+#dans un deuxieme temps on peut faire une construction brownian bridge 
+
+
 ############# MC STANDARD ###############
 
 value<-function(T=1,r=0.05,k=20,K=5,sigma=0.3,mu){
@@ -165,6 +170,8 @@ qmc<-function(N=1000,T=1,r=0.05,k=20,K=5,sigma=0.3,mu,funcStr='halton',antithet=
 }
 qmc(funcStr = 'sobol')
 
+############# RANDOMIZED QMC ###############
+#aucune idée 
 
 ############# RECAPITULONS ###############
 results<-data.frame(matrix(nrow=5,ncol=2),row.names = c('mc','antithetic','ctrl','qmc','qmc antithetic'))
@@ -179,8 +186,44 @@ results
 
 #on a donc pas la même moyenne selon les méthodes, ce qui est gênant, 
 # par contre les méthodes antithétiques donnent de meilleures variances
+# on pourrait rajouter l'option antithétique ou non à la méthode contrôle 
 
 ########################################
 ############# QUESTION 2 ###############
 ########################################
+
+multiLevel<-function(N,epsilon,T=1,r=0.05,sigma=0.3,K=5,mu){
+  if (missing(mu)){mu<-r}
+  h0<-T
+  L<- as.integer(-log(epsilon/T)/log(2))
+  M0 <- as.integer(-log(epsilon)/epsilon**2)
+  
+  g <- rnorm(n = N*M0)
+  g <- matrix(g,nrow=N,ncol=M0)
+  Sg<-1*(1+mu*h0+sigma*sqrt(h0)*g)
+  estim <- colMeans(pmax(S,0)) #à voir si c'est vraiment un colmean
+  
+  for (l in 1:L){
+    Ml <- as.integer(M0/2**l)
+    h<-h0/2**l
+    sig <- sigma*sqrt(h)
+    Sf <- matrix(1,nrow=N,ncol=Ml)
+    Sg <- matrix(1,nrow=N,ncol=Ml)
+    
+    for (k in 1:2**(l-1)){
+      g1 <- rnorm(n=N*Ml)
+      g2 <- rnorm(n=N*Ml)
+      
+      Sf <- Sf*(1+mu*h+sig*g1)
+      Sf <- Sf*(1+mu*h+sig*g2)
+      Sg <- Sg*(1+2*mu*h+sig*(g1+g2))
+    }
+    Cf<-pmax(Sf-K,0)
+    Cg<-pmax(Sg-K,0)
+    estim<-estim+mean(Cf-Cg)
+  }
+  return (estim)
+}
+
+multiLevel(N=1000,epsilon = 0.01)
 
