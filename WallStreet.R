@@ -199,32 +199,45 @@ results
 
 multiLevel<-function(N,epsilon,T=1,r=0.05,sigma=0.3,K=5,mu){
   if (missing(mu)){mu<-r}
+  
   h0<-T
   L<- as.integer(-log(epsilon/T)/log(2))
   M0 <- as.integer(-log(epsilon)/epsilon**2)
   g <- rnorm(n = N*M0)
   g <- matrix(g,nrow=N,ncol=M0)
-  Sg<-K*exp((mu-sigma**2/2)*h0+sigma*sqrt(h0)*g) #approximation lineaire
-  estim <- rowMeans(pmax(Sg-K,0)) #à voir si c'est vraiment un rowmean
+  Sg<-K*exp((mu-sigma**2/2)*h0+sigma*sqrt(h0)*g) 
+  estim <- rowMeans(pmax(Sg-K,0)) 
+  
   for (l in 1:L){
+    
     Ml <- as.integer(M0/2**l) #nombre de simulations au niveau l 
     h<-h0/2**l #pas de discrétisation du niveau l 
     sig <- sigma*sqrt(h) #ecart type correspondant
     Sf <- matrix(1,nrow=N,ncol=Ml) #schema d'euler de pas fin
     Sg <- matrix(1,nrow=N,ncol=Ml) #schema d'euler de pas grossier
     
+    MSf<-(1/2**l)*Sf #la moyenne arithmétique du processus, pas fin 
+    MSg<-(1/2**(l-1))*Sg #la moyenne arithmétique du processus, pas grossier
+    
     for (k in 1:2**(l-1)){
+      
       g1 <- rnorm(n=N*Ml)
       g2 <- rnorm(n=N*Ml)
+      g1<-matrix(g1,nrow = N,ncol = Ml)
+      g2<-matrix(g2,nrow = N,ncol = Ml)
+      
       #evolution de deux schemas: pas fin et pas grossier
       Sf <- Sf*exp((mu-sigma**2/2)*h+sig*g1)
+      MSf<-MSf+(1/2**l)*Sf
       Sf <- Sf*exp((mu-sigma**2/2)*h+sig*g2)
+      MSf<-MSf+(1/2**l)*Sf
       Sg <- Sg*exp(2*(mu-sigma**2/2)*h+sig*(g1+g2))
+      MSg<-MSg+(1/2**(l-1))*Sg
     }
-    Cf<-pmax(Sf-K,0)
-    Cg<-pmax(Sg-K,0)
+    Cf<-pmax(MSf-K,0)
+    Cg<-pmax(MSg-K,0)
     estim<-estim+rowMeans(Cf-Cg)
-    print(length(estim))
+    print(dim(estim))
   }
   return (exp(-r*T)*estim)
 }
