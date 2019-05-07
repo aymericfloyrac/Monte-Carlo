@@ -42,7 +42,7 @@ value<-function(T=1,r=0.05,k=20,K=5,sigma=0.3,mu){
     mu<-r
     } #on suppose que, si non spécifié, le drift et le taux d'intérêt sont égaux
   t <- (1:k)/k
-  W <- rnorm(n=k-1, mean=0,sd=1/k)
+  W <- rnorm(n=k-1, mean=0,sd=1/sqrt(k))
   W<- c(0,cumsum(W))
   S <- K*exp((mu-sigma**2/2)*t) #est-ce qu'on suppose que la valeur du BS au temps 0 vaut K? 
   S<-S*exp(sigma*W)
@@ -67,7 +67,7 @@ monteCarlo<-function(N=1000,T=1,r=0.05,k=20,K=5,sigma=0.3,mu,antithet=T){
     mu<-r
   } #on suppose que, si non spécifié, le drift et le taux d'intérêt sont égaux
   t <- (1:k)/k
-  W <- rnorm(n=N*(k-1), mean=0,sd=1/k)
+  W <- rnorm(n=N*(k-1), mean=0,sd=1/sqrt(k))
   W <- matrix(W,nrow = N,ncol = k-1)
   W<-t(apply(W,1,cumsum))
   W1 <- c(rep(0,N),W)
@@ -103,7 +103,7 @@ control<-function(N=1000,T=1,r=0.05,k=20,K=5,sigma=0.3,mu){
     mu<-r
   } #on suppose que, si non spécifié, le drift et le taux d'intérêt sont égaux
   t <- (1:k)/k
-  W <- rnorm(n=N*(k-1), mean=0,sd=1/k)
+  W <- rnorm(n=N*(k-1), mean=0,sd=sqrt(1/k))
   W <- matrix(W,nrow = N,ncol = k-1)
   W<-t(apply(W,1,cumsum))
   W1 <- c(rep(0,N),W)
@@ -138,18 +138,18 @@ qmc<-function(N=1000,T=1,r=0.05,k=20,K=5,sigma=0.3,mu,funcStr='halton',antithet=
   } #on suppose que, si non spécifié, le drift et le taux d'intérêt sont égaux
   t <- (1:k)/k
   if (randomized){
-    W <- (1/k)*sobol(normal=T,n = N,dim = k-1,scrambling = 3)
+    W <- sqrt(1/k)*sobol(normal=T,n = N,dim = k-1,scrambling = 3)
   }
   else{
     switch (funcStr,
       halton={
-        W <- (1/k)*halton(normal=T,n = N,dim = k-1)
+        W <- sqrt(1/k)*halton(normal=T,n = N,dim = k-1)
       },
       torus={
-        W <- (1/k)*torus(normal=T,n = N,dim = k-1)
+        W <- sqrt(1/k)*torus(normal=T,n = N,dim = k-1)
       },
       sobol={
-        W <- (1/k)*sobol(normal=T,n = N,dim = k-1)
+        W <- sqrt(1/k)*sobol(normal=T,n = N,dim = k-1)
       },
       print('qmc function not specified')
     )
@@ -189,7 +189,7 @@ results[6,]<-qmc(antithet = F,randomized = T)
 results[7,]<-qmc(antithet = T,randomized = T)
 results
 
-#on a donc pas la même moyenne selon les méthodes, ce qui est gênant, 
+# on a donc pas la même moyenne selon les méthodes, ce qui est gênant, 
 # par contre les méthodes antithétiques donnent de meilleures variances
 # on pourrait rajouter l'option antithétique ou non à la méthode contrôle 
 
@@ -200,26 +200,32 @@ results
 multiLevel<-function(N,epsilon,T=1,r=0.05,sigma=0.3,K=5,mu){
   if (missing(mu)){mu<-r}
   
-  h0<-T
-  L<- as.integer(-log(epsilon/T)/log(2))
-  M0 <- as.integer(-log(epsilon)/epsilon**2)
-  g <- rnorm(n = N*M0)
-  g <- matrix(g,nrow=N,ncol=M0)
-  Sg<-K*exp((mu-sigma**2/2)*h0+sigma*sqrt(h0)*g) 
-  estim <- rowMeans(pmax(Sg-K,0)) 
+  dates<-T/k*1:k
+  h0<-T/k #on fait k steps dès le début
+  L<- as.integer(-log(epsilon/T)/log(2)) #nombre de niveaux 
+  M0 <- as.integer(-log(epsilon)/epsilon**2) #nombre de simulations au niveau 0
+  Sg <- matrix(K,nrow=N,ncol=M0)
+  MSg<- 1/k*Sg
+  for (i in 1:k){
+    g <- rnorm(n = N*M0)
+    g <- matrix(g,nrow=N,ncol=M0)
+    Sg <- Sg*(1+mu*h0)+sigma*sqrt(h0)*g
+    MSg <- MSg + 1/k*Sg
+  }
+  estim <- rowMeans(pmax(MSg-K,0)) 
   
   for (l in 1:L){
     
     Ml <- as.integer(M0/2**l) #nombre de simulations au niveau l 
-    h<-h0/2**l #pas de discrétisation du niveau l 
-    sig <- sigma*sqrt(h) #ecart type correspondant
-    Sf <- matrix(1,nrow=N,ncol=Ml) #schema d'euler de pas fin
-    Sg <- matrix(1,nrow=N,ncol=Ml) #schema d'euler de pas grossier
+    hl<-h0/(2**l) #pas de discrétisation du niveau l 
+    sig <- sigma*sqrt(hl) #ecart type correspondant
+    Sf <- matrix(K,nrow=N,ncol=Ml) #schema d'euler de pas fin
+    Sg <- matrix(K,nrow=N,ncol=Ml) #schema d'euler de pas grossier
     
-    MSf<-(1/2**l)*Sf #la moyenne arithmétique du processus, pas fin 
-    MSg<-(1/2**(l-1))*Sg #la moyenne arithmétique du processus, pas grossier
+    MSf<-(1/k)*Sf #la moyenne arithmétique du processus, pas fin 
+    MSg<-(1/k)*Sg #la moyenne arithmétique du processus, pas grossier
     
-    for (k in 1:2**(l-1)){
+    for (i in 1:2**(l-1)){
       
       g1 <- rnorm(n=N*Ml)
       g2 <- rnorm(n=N*Ml)
@@ -227,21 +233,23 @@ multiLevel<-function(N,epsilon,T=1,r=0.05,sigma=0.3,K=5,mu){
       g2<-matrix(g2,nrow = N,ncol = Ml)
       
       #evolution de deux schemas: pas fin et pas grossier
-      Sf <- Sf*exp((mu-sigma**2/2)*h+sig*g1)
-      MSf<-MSf+(1/2**l)*Sf
-      Sf <- Sf*exp((mu-sigma**2/2)*h+sig*g2)
-      MSf<-MSf+(1/2**l)*Sf
-      Sg <- Sg*exp(2*(mu-sigma**2/2)*h+sig*(g1+g2))
-      MSg<-MSg+(1/2**(l-1))*Sg
+      Sf <- Sf*exp((mu-sigma**2/2)*hl+sig*g1)
+      Sf<-Sf*(1+mu*hl)+sig*g1
+      if (i*T*2**l/k %in% dates){MSf<-MSf+(1/k)*Sf}
+      Sf <- Sf*exp((mu-sigma**2/2)*hl+sig*g2)
+      if ((i+1)*T*2**l/k %in% dates){MSf<-MSf+(1/k)*Sf}
+      Sg <- Sg*exp(2*(mu-sigma**2/2)*hl+sig*(g1+g2))
+      if (i*T*2**(l-1)/k %in% dates){MSg<-MSg+(1/k)*Sg}
     }
     Cf<-pmax(MSf-K,0)
     Cg<-pmax(MSg-K,0)
     estim<-estim+rowMeans(Cf-Cg)
-    print(dim(estim))
   }
   return (exp(-r*T)*estim)
 }
 
-e<-multiLevel(N=1000,epsilon = 0.1)
+e<-multiLevel(N=1000,epsilon = 0.05)
 mean(e)
 sd(e)
+
+
