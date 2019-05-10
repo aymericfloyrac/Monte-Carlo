@@ -32,37 +32,12 @@ for (i in 2:n){
 
 plot(colMeans(W),type='l')
 
-#dans un deuxieme temps on peut faire une construction brownian bridge 
 
-
-############# MC STANDARD ###############
-
-value<-function(T=1,r=0.05,k=20,K=5,sigma=0.3,mu){
-  if (missing(mu)){
-    mu<-r
-    } #on suppose que, si non spécifié, le drift et le taux d'intérêt sont égaux
-  t <- (1:k)/k
-  W <- rnorm(n=k-1, mean=0,sd=1/sqrt(k))
-  W<- c(0,cumsum(W))
-  S <- K*exp((mu-sigma**2/2)*t) #est-ce qu'on suppose que la valeur du BS au temps 0 vaut K? 
-  S<-S*exp(sigma*W)
-  return(exp(-r*T)*max(mean(S)-K,0))
-}
-value()
-
-#plusieurs simulations
-v<-c()
-for (i in 1:1000){
-  v<-c(v,value())
-}
-
-mean(v)
-sd(v)
-
-############# ANTITHETIQUE ###############
+############# MC STD & ANTITHETIQUE ###############
 # concernant le MB, on sait que -W a même loi que W. 
 
 monteCarlo<-function(N=1000,T=1,r=0.05,k=20,K=5,sigma=0.3,mu,antithet=T){
+  start<-Sys.time()
   if (missing(mu)){
     mu<-r
   } #on suppose que, si non spécifié, le drift et le taux d'intérêt sont égaux
@@ -86,7 +61,8 @@ monteCarlo<-function(N=1000,T=1,r=0.05,k=20,K=5,sigma=0.3,mu,antithet=T){
   #beta <- cov(W1[,k],C)/var(W1[,k])
   #C <- C-beta*W1[,k]
   #return (list('mean'=mean(C),'sd'=sd(C)))
-  return (c(mean(C),sd(C)))
+  end<-Sys.time()
+  return (c(mean(C),sd(C),end-start))
 }
 
 monteCarlo(antithet=F)
@@ -98,7 +74,8 @@ monteCarlo(antithet = T)
 #on change la façon de simuler parce qu'on va avoir besoin 
 #d'estimateurs de cov et de variances
 
-control<-function(N=1000,T=1,r=0.05,k=20,K=5,sigma=0.3,mu){
+control<-function(N=1000,T=1,r=0.05,k=20,K=5,sigma=0.3,antithet=F,mu){
+  start<-Sys.time()
   if (missing(mu)){
     mu<-r
   } #on suppose que, si non spécifié, le drift et le taux d'intérêt sont égaux
@@ -108,19 +85,25 @@ control<-function(N=1000,T=1,r=0.05,k=20,K=5,sigma=0.3,mu){
   W<-t(apply(W,1,cumsum))
   W1 <- c(rep(0,N),W)
   W1<-matrix(W1,nrow = N,ncol = k)
-  W2 <- -W1
   S <- rep(K*exp((mu-sigma**2/2)*t),N) 
   S <-matrix(S,nrow=N,ncol=k)
   S1 <-S*exp(sigma*W1)
-  S2 <-S*exp(sigma*W2)
-  C <- 0.5*exp(-r*T)*(pmax(rowMeans(S1)-K,0)+pmax(rowMeans(S2)-K,0))
+  if (antithet){
+    W2 <- -W1
+    S2 <-S*exp(sigma*W2)
+    C <- 0.5*exp(-r*T)*(pmax(rowMeans(S1)-K,0)+pmax(rowMeans(S2)-K,0))
+  }
+  else{
+    C <- exp(-r*T)*pmax(rowMeans(S1)-K,0)
+  }
   beta <- cov(W1[,k],C)/var(W1[,k])
   C <- C-beta*W1[,k]
   #return (list('mean'=mean(C),'sd'=sd(C)))
-  return (c(mean(C),sd(C)))
+  end<-Sys.time()
+  return (c(mean(C),sd(C),end-start))
 }
 
-control()
+control(antithet=T)
 
 
 
@@ -133,6 +116,7 @@ library(randtoolbox)
 # pour faire le RQMC on utilise l'option scrambling de la fonction sobol
 
 qmc<-function(N=1000,T=1,r=0.05,k=20,K=5,sigma=0.3,mu,funcStr='halton',antithet=T,randomized=F){
+  start<-Sys.time()
   if (missing(mu)){
     mu<-r
   } #on suppose que, si non spécifié, le drift et le taux d'intérêt sont égaux
@@ -172,22 +156,13 @@ qmc<-function(N=1000,T=1,r=0.05,k=20,K=5,sigma=0.3,mu,funcStr='halton',antithet=
   beta <- cov(W1[,k],C)/var(W1[,k])
   C <- C-beta*W1[,k]
   #return (list('mean'=mean(C),'sd'=sd(C)))
-  return (c(mean(C),sd(C)))
+  end<-Sys.time()
+  return (c(mean(C),sd(C),end-start))
 }
 qmc(funcStr = 'sobol')
 
 
-############# RECAPITULONS ###############
-results<-data.frame(matrix(nrow=7,ncol=2),row.names = c('mc','antithetic','ctrl','qmc','qmc antithetic','rqmc','rqmc anti'))
-colnames(results)<-c('moyenne','ecart-type')
-results[1,]<-monteCarlo(antithet=F,N=10000)
-results[2,]<-monteCarlo(antithet = T)
-results[3,]<-control()
-results[4,]<-qmc(antithet = F,N=10000)
-results[5,]<-qmc(antithet = T)
-results[6,]<-qmc(antithet = F,randomized = T)
-results[7,]<-qmc(antithet = T,randomized = T)
-results
+
 
 # par contre les méthodes antithétiques donnent de meilleures variances
 # on pourrait rajouter l'option antithétique ou non à la méthode contrôle 
@@ -197,6 +172,7 @@ results
 ########################################
 
 multiLevel<-function(N,epsilon,T=1,r=0.05,sigma=0.3,K=5,mu,k=20){
+  start<-Sys.time()
   if (missing(mu)){mu<-r}
   
   dates<-T/k*1:k
@@ -245,12 +221,13 @@ multiLevel<-function(N,epsilon,T=1,r=0.05,sigma=0.3,K=5,mu,k=20){
     Cg<-pmax(MSg-K,0)
     estim<-estim+rowMeans(Cf-Cg)
   }
-  return (exp(-r*T)*estim)
+  e<-exp(-r*T)*estim
+  end<-Sys.time()
+  return (c(mean(e),sd(e),end-start))
 }
 
-e<-multiLevel(N=1000,epsilon = 0.05)
-mean(e)
-sd(e)
+multiLevel(N=1000,epsilon = 0.05)
+
 
 
 
@@ -260,6 +237,7 @@ sd(e)
 library(gtools)
 
 multiLevelQMC<-function(N,epsilon,T=1,r=0.05,sigma=0.3,K=5,mu,k=20,func){
+  start<-Sys.time()
   if (missing(mu)){mu<-r}
   
   dates<-T/k*1:k
@@ -313,12 +291,59 @@ multiLevelQMC<-function(N,epsilon,T=1,r=0.05,sigma=0.3,K=5,mu,k=20,func){
     Cg<-pmax(MSg-K,0)
     estim<-estim+rowMeans(Cf-Cg)
   }
-  return (exp(-r*T)*estim)
+  e<-exp(-r*T)*estim
+  end<-Sys.time()
+  return(c(mean(e),sd(e),end-start))
 }
 
-e<-multiLevelQMC(N=10,epsilon = 0.05,func=torus)
-mean(e)
-sd(e)
+multiLevelQMC(N=10,epsilon = 0.05,func=torus)
 
+########################################
+#############  SYNTHESE  ###############
+########################################
+library(ggplot2)
+
+results<-data.frame(matrix(nrow=10,ncol=3),
+                    row.names = c('mc','antithetic','ctrl','ctrl antithetic','qmc',
+                                  'qmc antithetic','rqmc','rqmc antithetic',
+                                  'multilevel','qmc multilevel'))
+
+colnames(results)<-c('moyenne','ecart-type','temps de calcul')
+results[1,]<-monteCarlo(antithet=F,N=10000)
+results[2,]<-monteCarlo(antithet = T,N=10000)
+results[3,]<-control(N=10000)
+results[4,]<-control(antithet=T,N=10000)
+results[5,]<-qmc(antithet = F,N=10000)
+results[6,]<-qmc(antithet = T,N=10000)
+results[7,]<-qmc(antithet = F,randomized = T,N=10000)
+results[8,]<-qmc(antithet = T,randomized = T,N=10000)
+results[9,]<-multiLevel(N=100,epsilon = 0.1)
+results[10,]<-multiLevel(N=100,epsilon = 0.1)
+results
+
+######### PLOT #############
+
+get_plot <- function(method){
+  x <- c(10,50,100,500,1000,5000,10000)
+  mean <- vector("numeric", length(x))
+  sdv <- vector("numeric", length(x))
+  ci <- vector("numeric", length(x))
+  for (i in 1:length(x)){
+    res <- method(N=x[i])
+    mean[i] <- res[1]
+    sdv[i] <- res[2]
+    ci[i] <- 1.96 * sdv[i]/sqrt(x[i])
+  }
+  tib <- tibble(x, mean, sdv, ci)
+  ggplot(data = tib, mapping = aes(x = x, y = mean)) +
+    geom_errorbar(aes(ymin=mean-ci, ymax=mean+ci),
+                  colour="red", width=.05, size = .7) +
+    geom_point(size = 2.2) +
+    scale_x_continuous(trans = 'log10') +
+    labs(x = 'nombre de simulations', 'mean') +
+    theme_bw()
+}
+
+get_plot(method = monteCarlo(antithet = F))
 
 
