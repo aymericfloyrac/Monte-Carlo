@@ -1,6 +1,6 @@
 rm(list=ls())
 library(MASS)
-
+library(randtoolbox)
 "
 une idée générale: pour le rendu graphique, on peut plotter l'évolution de la moyenne
 à chaque période (k périodes) avec des error bars
@@ -257,6 +257,7 @@ sd(e)
 ########################################
 ############# QUESTION 3 ###############
 ########################################
+library(gtools)
 
 multiLevelQMC<-function(N,epsilon,T=1,r=0.05,sigma=0.3,K=5,mu,k=20,func){
   if (missing(mu)){mu<-r}
@@ -269,13 +270,16 @@ multiLevelQMC<-function(N,epsilon,T=1,r=0.05,sigma=0.3,K=5,mu,k=20,func){
   Sg <- matrix(K,nrow=N,ncol=M0)
   MSg<- 1/k*Sg
   for (i in 1:k){
-    #g <- rnorm(n = N*M0)
-    g <- t(func(normal=T,dim=N,n=M0))
-    #g <- matrix(g,nrow=N,ncol=M0)
+    g<-func(normal = T,n=N*M0)
+    g<-permute(g)
+    g <- matrix(g,nrow=N,ncol=M0)
     Sg <- Sg*(1+mu*h0)+sigma*sqrt(h0)*g
     MSg <- MSg + 1/k*Sg
   }
   estim <- rowMeans(pmax(MSg-K,0)) 
+  mean(estim)
+  length(estim)
+  sd(estim)
   
   for (l in 1:L){
     
@@ -290,13 +294,11 @@ multiLevelQMC<-function(N,epsilon,T=1,r=0.05,sigma=0.3,K=5,mu,k=20,func){
     
     for (i in 1:2**(l-1)){
       
-      #g1 <- rnorm(n=N*Ml)
-      #g2 <- rnorm(n=N*Ml)
-     
-      g1 <- t(func(normal=T,dim=N,n=Ml))
-      g2 <- t(func(normal=T,dim=N,n=Ml))
-      #g1<-matrix(g1,nrow = N,ncol = Ml)
-      #g2<-matrix(g2,nrow = N,ncol = Ml)
+      g1 <- func(normal=T,n=N*Ml)
+      g2 <- func(normal=T,n=N*Ml)
+      g1 <- matrix(permute(g1),nrow=N,ncol=Ml)
+      g2 <- matrix(permute(g2),nrow=N,ncol=Ml)
+      
       
       #evolution de deux schemas: pas fin et pas grossier
       Sf <- Sf*exp((mu-sigma**2/2)*hl+sig*g1)
@@ -314,70 +316,9 @@ multiLevelQMC<-function(N,epsilon,T=1,r=0.05,sigma=0.3,K=5,mu,k=20,func){
   return (exp(-r*T)*estim)
 }
 
-e<-multiLevelQMC(N=1000,epsilon = 0.05,func=torus)
+e<-multiLevelQMC(N=10,epsilon = 0.05,func=torus)
 mean(e)
 sd(e)
 
 
 
-
-
-N=1000;epsilon=0.1;T=1;r=0.05;sigma=0.3;K=5;mu=0.05;k=20;func=sobol
-
-
-dates<-T/k*1:k
-h0<-T/k #on fait k steps dès le début
-L<- as.integer(-log(epsilon/T)/log(2)) #nombre de niveaux 
-M0 <- as.integer(-log(epsilon)/epsilon**2) #nombre de simulations au niveau 0
-
-Sg <- matrix(K,nrow=N,ncol=M0)
-MSg<- 1/k*Sg
-for (i in 1:k){
-  #g <- rnorm(n = N*M0)
-  #g <- matrix(g,nrow=N,ncol=M0)
-  #g <- t(func(normal=T,dim=N,n=M0))
-  g<-func(normal = T,n=N*M0)
-  g <- matrix(g,nrow=N,ncol=M0)
-  Sg <- Sg*(1+mu*h0)+sigma*sqrt(h0)*g
-  MSg <- MSg + 1/k*Sg
-}
-estim <- rowMeans(pmax(MSg-K,0)) 
-mean(estim)
-length(estim)
-sd(estim)
-for (l in 1:L){
-  
-  Ml <- as.integer(M0/2**l) #nombre de simulations au niveau l 
-  hl<-h0/(2**l) #pas de discrétisation du niveau l 
-  sig <- sigma*sqrt(hl) #ecart type correspondant
-  Sf <- matrix(K,nrow=N,ncol=Ml) #schema d'euler de pas fin
-  Sg <- matrix(K,nrow=N,ncol=Ml) #schema d'euler de pas grossier
-  
-  MSf<-(1/k)*Sf #la moyenne arithmétique du processus, pas fin 
-  MSg<-(1/k)*Sg #la moyenne arithmétique du processus, pas grossier
-  
-  for (i in 1:2**(l-1)){
-    
-    #g1 <- rnorm(n=N*Ml)
-    #g2 <- rnorm(n=N*Ml)
-    
-    g1 <- func(normal=T,dim=Ml,n=N)
-    g2 <- func(normal=T,dim=Ml,n=N)
-    #g1<-matrix(g1,nrow = N,ncol = Ml)
-    #g2<-matrix(g2,nrow = N,ncol = Ml)
-    
-    #evolution de deux schemas: pas fin et pas grossier
-    Sf <- Sf*exp((mu-sigma**2/2)*hl+sig*g1)
-    Sf<-Sf*(1+mu*hl)+sig*g1
-    if (i*T*2**l/k %in% dates){MSf<-MSf+(1/k)*Sf}
-    Sf <- Sf*exp((mu-sigma**2/2)*hl+sig*g2)
-    if ((i+1)*T*2**l/k %in% dates){MSf<-MSf+(1/k)*Sf}
-    Sg <- Sg*exp(2*(mu-sigma**2/2)*hl+sig*(g1+g2))
-    if (i*T*2**(l-1)/k %in% dates){MSg<-MSg+(1/k)*Sg}
-  }
-  Cf<-pmax(MSf-K,0)
-  Cg<-pmax(MSg-K,0)
-  estim<-estim+rowMeans(Cf-Cg)
-}
-e<- exp(-r*T)*estim
-mean(e)
