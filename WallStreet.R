@@ -1,3 +1,4 @@
+##coucou ceci est un commit
 rm(list=ls())
 library(MASS)
 library(randtoolbox)
